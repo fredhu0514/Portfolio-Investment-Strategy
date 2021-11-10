@@ -10,7 +10,6 @@ import numpy as np
 
 INITIAL_CAPITAL = 5.0
 decay_rate = 0.3
-# lr = 0.5
 MAX_TIMESTAMP = 5
 STEP_REWARDS = 0
 
@@ -19,6 +18,41 @@ TRANSITION = [] # (STATE_HASH, MOVE_INDEX) : NEXT_STATE_HASH
 
 CURRENT_ITER = [0, 0]
 
+def entropy_update():
+    if CURRENT_ITER[0] >= 0.9 * CURRENT_ITER[1]:
+        return 0.2
+    elif CURRENT_ITER[0] >= 0.75 * CURRENT_ITER[1]:
+        return 0.35
+    elif CURRENT_ITER[0] >= 0.6 * CURRENT_ITER[1]:
+        return 0.50
+    elif CURRENT_ITER[0] >= 0.45 * CURRENT_ITER[1]:
+        return 0.65
+    elif CURRENT_ITER[0] >= 0.3 * CURRENT_ITER[1]:
+        return 0.8
+    else:
+        return 1
+
+def lr_update():
+    if CURRENT_ITER[0] >= 0.9 * CURRENT_ITER[1]:
+        return 0.25
+    elif CURRENT_ITER[0] >= 0.75 * CURRENT_ITER[1]:
+        return 0.30
+    elif CURRENT_ITER[0] >= 0.6 * CURRENT_ITER[1]:
+        return 0.35
+    elif CURRENT_ITER[0] >= 0.45 * CURRENT_ITER[1]:
+        return 0.40
+    elif CURRENT_ITER[0] >= 0.3 * CURRENT_ITER[1]:
+        return 0.45
+    else:
+        return 0.5
+
+
+
+"""
+########################
+## PROJECT DEFINITION ##
+########################
+"""
 
 class project:
     def __init__(self, index, cost, benefit, name, cur_year=0, max_year=10, been_upgraded=False):
@@ -66,11 +100,13 @@ class project:
         return self.name
 
 
+
 """
 ##########
 ## DATA ##
 ##########
 """
+
 # Initialized Ongoing projects
 B01 = project((0,1), 1.8, 0.21, "B01",  2)
 B02 = project((0,2), 2.2, 0.25, "B02",  4)
@@ -113,3 +149,36 @@ A54 = project((5,4), 3.1, 0.33, "A53")
 bt5 = [A51, A52, A53, A54]
 
 BACK_LIST = [bt1, bt2, bt3, bt4, bt5, []]
+
+
+
+"""
+#################
+## HELPER FUNC ##
+#################
+"""
+
+def associates_logic(ongoing_proj_list):
+    total_extra_benefits = 0
+    # More associated benefits here
+    return total_extra_benefits
+
+def toBinary(a, max_length):
+    r = []
+    for _ in range(max_length):
+        r.append(a%2)
+        a //= 2
+    return r
+
+def toTrinary(a, max_length):
+    r = []
+    for _ in range(max_length):
+        r.append(a%3)
+        a //= 3
+    return r
+
+def random_generate_function(p):
+    return random.random() < p
+
+
+
