@@ -186,6 +186,7 @@ class state:
         self.back_list = BACK_LIST[self.cur_timestamp]
         self.ongoing_list = ongoing_list
         self.possible_moves = np.zeros((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
+        self.exploitation_times = np.zeros((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
 
     def generate_moves_by_index(self, index):
         # 0: maintain, 1: pickup
@@ -227,9 +228,14 @@ class state:
             return False, total_profit
 
         if random_generate_function(entropy):
-            temp_index_list = np.arange((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
-            np.random.shuffle(temp_index_list)
-            strategy_index_list = temp_index_list
+            # # PURE RANDOMNESS EXPLORATION
+            # temp_index_list = np.arange((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
+            # np.random.shuffle(temp_index_list)
+            # strategy_index_list = temp_index_list
+
+            # SORT self.possible_moves ACCORDING self.exploitation_times
+            strategy_index_list = np.arange((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))[np.argsort(self.exploitation_times)]
+
             # DEBUG: print("random", strategy_index_list)
         else:
             strategy_index_list = np.flip(np.argsort(self.possible_moves))
@@ -239,11 +245,14 @@ class state:
         total_cost = 0
         valid = False
         for i in strategy_index_list:
-            strategy_index = i
+            strategy_index = int(i)
             move = self.generate_moves_by_index(strategy_index)
             valid, total_cost = self.is_valid_move(move)
             if valid:
+                self.exploitation_times[strategy_index] += 1
                 break
+            else:
+                self.exploitation_times[strategy_index] = float('inf')
 
         if not valid:  # No any valid moves (IN CASE SOME INVESTMENT HAS NEGATIVE PROFIT)
             TRANSITION.append(
@@ -367,8 +376,8 @@ def batch(num, batch_size, entropy_func, lr_func):
     return hist
 
 
-def train(entropy_func, lr_func, num=30, batch_size=1000):
-    hist = batch(num, batch_size, entropy_func, lr_func)
+def train(exploration_rate, lr_func, batches=30, iter_per_batch=1000):
+    hist = batch(batches, iter_per_batch, exploration_rate, lr_func)
 
     print(f"Total expanded states {len(HASH_STATE)}")
     print(f"Max profit {MAX_PROFIT[0]}")
@@ -390,9 +399,10 @@ init_state = state(0, INITIAL_CAPITAL, bt0)
 HASH_STATE[init_state.__hash__()] = init_state
 
 if __name__ == "__main__":
-    hist1 = train(entropy_func=lambda: 1, lr_func=lr_update, num=100, batch_size=1000)
-    hist2 = train(entropy_func=lambda: 0.8, lr_func=lr_update, num=100, batch_size=1000)
-    hist3 = train(entropy_func=lambda: 0.5, lr_func=lr_update, num=300, batch_size=1000)
+    hist1 = train(exploration_rate=lambda: 1, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
+    hist2 = train(exploration_rate=lambda: 0.8, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
+    hist3 = train(exploration_rate=lambda: 0.5, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
+    hist4 = train(exploration_rate=lambda: min(0.5, max(1 - (CURRENT_ITER[0] / CURRENT_ITER[1]) ** 2, 0.1)), lr_func=lambda: 0.01, batches=200, iter_per_batch=1000)
 
-    plt.plot(hist1 + hist2 + hist3)
+    plt.plot(hist1 + hist2 + hist3 + hist4)
     plt.show()
