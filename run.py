@@ -182,3 +182,124 @@ def random_generate_function(p):
 
 
 
+"""
+######################
+## STATE DEFINITION ##
+######################
+"""
+
+class state:
+    def __init__(self, cur_timestamp, C, ongoing_list):
+        self.cur_timestamp = cur_timestamp
+        self.current_cash = C
+        self.back_list = BACK_LIST[self.cur_timestamp]
+        self.ongoing_list = ongoing_list
+        self.possible_moves = np.zeros((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
+
+    def generate_moves_by_index(self, index):
+        # 0: maintain, 1: pickup
+        back_move_index = index % (2 ** len(self.back_list))
+        # 0:maintain, 1: upgrade, 2: abort
+        ongoing_move_index = index // (2 ** len(self.back_list))
+        return [toBinary(back_move_index, len(self.back_list)), toTrinary(ongoing_move_index, len(self.ongoing_list))]
+
+    def is_valid_move(self, move):
+        bmove = move[0]
+        omove = move[1]
+        total_cost = 0
+
+        for j in range(len(self.ongoing_list)):
+            if omove[j] == 1:
+                valid, cost = self.ongoing_list[j].proj_upgrade()
+                if valid:
+                    total_cost += cost
+                    if total_cost > self.current_cash:
+                        return False, 0
+                else:
+                    return False, 0
+
+        for i in range(len(self.back_list)):
+            if bmove[i] == 1:
+                total_cost += self.back_list[i].cost
+                if total_cost > self.current_cash:
+                    return False, 0
+
+        return True, total_cost
+
+    def transist(self):
+        entropy = entropy_update()
+        strategy_index = 0
+        if self.cur_timestamp == MAX_TIMESTAMP:  # END INVESTMENT PERIOD
+            total_profit = sum([i.investment_termination() for i in self.ongoing_list])
+            # STORE THE PATH TO THE MAP
+            TRANSITION.append((self.__hash__(), strategy_index, total_profit))
+            return False, total_profit
+
+        strategy_index_list = []
+        if random_generate_function(entropy):
+            temp_index_list = np.arange((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
+            np.random.shuffle(temp_index_list)
+            strategy_index_list = temp_index_list
+            # DEBUG: print("random", strategy_index_list)
+        else:
+            strategy_index_list = np.flip(np.argsort(self.possible_moves))
+            # DEBUG: print("normal", strategy_index_list)
+
+        move = self.generate_moves_by_index(0)
+        for i in strategy_index_list:
+            strategy_index = i
+            move = self.generate_moves_by_index(strategy_index)
+            valid, total_cost = self.is_valid_move(move)
+            if valid:
+                break
+
+        if valid == False:  # No any valid moves (IN CASE SOME INVESTMENT HAS NEGATIVE PROFIT)
+            TRANSITION.append((self.__hash__(), -1, -1000))  # UPDATE ALL MOVES SINCE NONE OF THEM ARE FEASIBLE
+            return False, -1000  # False transition, rewards value
+
+        total_profit = 0
+        temp_ongoing_list = []
+        for i in range(len(self.ongoing_list)):
+            proj = self.ongoing_list[i]
+            if move[1][i] == 2:
+                total_profit += proj.proj_termination()
+            elif move[1][i] == 1:
+                proj_op = copy.deepcopy(proj)
+                proj_op.proj_upgrade(test=False)
+                # Upgrade year has no income
+                valid, _ = proj_op.update()
+                if valid:
+                    temp_ongoing_list.append(proj_op)
+            else:
+                proj_op = copy.deepcopy(proj)
+                valid, profit = proj_op.update()
+                if valid:
+                    total_profit += profit
+                    temp_ongoing_list.append(proj_op)
+        for i in range(len(self.back_list)):
+            proj = self.back_list[i]
+            if move[0][i] == 1:
+                # Assume they must valid when first time updating
+                proj_op = copy.deepcopy(proj)
+                proj_op.update()
+                temp_ongoing_list.append(proj_op)
+
+        associated_benefits = associates_logic(temp_ongoing_list)
+        new_state = state(self.cur_timestamp + 1,
+                          self.current_cash - total_cost + total_profit + associated_benefits,
+                          temp_ongoing_list)
+        # STORE THE STATE TO THE MAP
+        new_state_hash = new_state.__hash__()
+        if new_state_hash in HASH_STATE:
+            new_state = HASH_STATE[new_state_hash]
+        else:
+            HASH_STATE[new_state_hash] = new_state
+        # STORE THE PATH TO THE MAP
+        TRANSITION.append((self.__hash__(), strategy_index, new_state_hash))
+        return True, new_state
+
+    def __hash__(self):
+        hash_ongoing_list = [i.__hash__() for i in self.ongoing_list]
+        hash_ongoing_list.sort()
+        return hash(str(self.cur_timestamp) + str(self.current_cash) + str(hash_ongoing_list))
+
