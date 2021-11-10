@@ -18,6 +18,9 @@ TRANSITION = [] # (STATE_HASH, MOVE_INDEX) : NEXT_STATE_HASH
 
 CURRENT_ITER = [0, 0]
 
+MAX_PROFIT = [float('-inf')]
+MAX_PROFIT_PATH = []
+
 def entropy_update():
     if CURRENT_ITER[0] >= 0.9 * CURRENT_ITER[1]:
         return 0.2
@@ -302,4 +305,47 @@ class state:
         hash_ongoing_list = [i.__hash__() for i in self.ongoing_list]
         hash_ongoing_list.sort()
         return hash(str(self.cur_timestamp) + str(self.current_cash) + str(hash_ongoing_list))
+
+
+"""
+################
+## Q Learning ##
+################
+"""
+
+def Q_val_update():
+    global TRANSITION
+
+    if len(TRANSITION) < 1:
+        return None
+
+    # Update profit first
+    cur_state_hash, action, profit = TRANSITION.pop()
+
+    if action == -1:
+        for i in range(len(HASH_STATE[cur_state_hash].possible_moves)):
+            HASH_STATE[cur_state_hash].possible_moves[i] += lr_update() * (profit - INITIAL_CAPITAL - HASH_STATE[cur_state_hash].possible_moves[action])
+    else:
+        HASH_STATE[cur_state_hash].possible_moves[action] += lr_update() * (profit - INITIAL_CAPITAL - HASH_STATE[cur_state_hash].possible_moves[action])
+
+    for cur_state_hash, action, next_state_hash in reversed(TRANSITION):
+        HASH_STATE[cur_state_hash].possible_moves[action] += lr_update() * (STEP_REWARDS +
+                                                                   decay_rate * np.max(HASH_STATE[next_state_hash].possible_moves)
+                                                                   - HASH_STATE[cur_state_hash].possible_moves[action])
+
+    if profit > MAX_PROFIT[0]:
+        MAX_PROFIT[0] = profit
+        global MAX_PROFIT_PATH
+        MAX_PROFIT_PATH = copy.deepcopy(TRANSITION)
+
+    TRANSITION = []
+    return profit
+
+
+
+"""
+#################
+## START TRIAL ##
+#################
+"""
 
