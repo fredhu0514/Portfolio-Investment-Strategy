@@ -1,6 +1,7 @@
 import copy
 import random
 import numpy as np
+import matplotlib.pyplot as plt
 
 """
 ############
@@ -341,6 +342,29 @@ def Q_val_update():
     TRANSITION = []
     return profit
 
+def iteration():
+    cur_state = init_state
+    while True:
+        cont, next_state = cur_state.transist()
+        if cont:
+            cur_state = next_state
+        else:
+            break
+    CURRENT_ITER[0] += 1
+    return Q_val_update()
+
+def batch(num, batch_size=1000):
+    hist = []
+    CURRENT_ITER[1] = num * batch_size
+    for i in range(num):
+        profit = 0
+        for _ in range(batch_size):
+            profit += iteration()
+        avg_acc = profit / batch_size
+        print(f"BATCH {i} avg cash {avg_acc}")
+        hist.append(avg_acc)
+    return hist
+
 
 
 """
@@ -348,4 +372,13 @@ def Q_val_update():
 ## START TRIAL ##
 #################
 """
+# Initialize State 0
+init_state = state(0, INITIAL_CAPITAL, bt0)
+HASH_STATE[init_state.__hash__()] = init_state
 
+hist = batch(50)
+
+print(f"Total expanded states {len(HASH_STATE)}")
+
+plt.plot(hist)
+plt.show()
