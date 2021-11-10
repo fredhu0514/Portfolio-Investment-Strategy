@@ -22,33 +22,40 @@ CURRENT_ITER = [0, 0]
 MAX_PROFIT = [float('-inf')]
 MAX_PROFIT_PATH = []
 
-def entropy_update():
-    if CURRENT_ITER[0] >= 0.9 * CURRENT_ITER[1]:
-        return 0.2
-    elif CURRENT_ITER[0] >= 0.75 * CURRENT_ITER[1]:
-        return 0.35
-    elif CURRENT_ITER[0] >= 0.6 * CURRENT_ITER[1]:
-        return 0.50
-    elif CURRENT_ITER[0] >= 0.45 * CURRENT_ITER[1]:
-        return 0.65
-    elif CURRENT_ITER[0] >= 0.3 * CURRENT_ITER[1]:
-        return 0.8
-    else:
-        return 1
+# def entropy_update():
+#     if CURRENT_ITER[0] >= 0.98 * CURRENT_ITER[1]:
+#         return 0.05
+#     elif CURRENT_ITER[0] >= 0.9 * CURRENT_ITER[1]:
+#         return 0.2
+#     elif CURRENT_ITER[0] >= 0.75 * CURRENT_ITER[1]:
+#         return 0.35
+#     elif CURRENT_ITER[0] >= 0.6 * CURRENT_ITER[1]:
+#         return 0.50
+#     elif CURRENT_ITER[0] >= 0.45 * CURRENT_ITER[1]:
+#         return 0.65
+#     elif CURRENT_ITER[0] >= 0.3 * CURRENT_ITER[1]:
+#         return 0.8
+#     else:
+#         return 1
 
+def entropy_update():
+    return max(1 - (CURRENT_ITER[0]/CURRENT_ITER[1])**2, 0.2)
+
+# def lr_update():
+#     if CURRENT_ITER[0] >= 0.9 * CURRENT_ITER[1]:
+#         return 0.25
+#     elif CURRENT_ITER[0] >= 0.75 * CURRENT_ITER[1]:
+#         return 0.30
+#     elif CURRENT_ITER[0] >= 0.6 * CURRENT_ITER[1]:
+#         return 0.35
+#     elif CURRENT_ITER[0] >= 0.45 * CURRENT_ITER[1]:
+#         return 0.40
+#     elif CURRENT_ITER[0] >= 0.3 * CURRENT_ITER[1]:
+#         return 0.45
+#     else:
+#         return 0.5
 def lr_update():
-    if CURRENT_ITER[0] >= 0.9 * CURRENT_ITER[1]:
-        return 0.25
-    elif CURRENT_ITER[0] >= 0.75 * CURRENT_ITER[1]:
-        return 0.30
-    elif CURRENT_ITER[0] >= 0.6 * CURRENT_ITER[1]:
-        return 0.35
-    elif CURRENT_ITER[0] >= 0.45 * CURRENT_ITER[1]:
-        return 0.40
-    elif CURRENT_ITER[0] >= 0.3 * CURRENT_ITER[1]:
-        return 0.45
-    else:
-        return 0.5
+    return 0.01
 
 
 
@@ -101,7 +108,10 @@ class project:
         return hash(attr)
 
     def __str__(self):
-        return self.name
+        if self.been_upgraded:
+            return self.name + "_UPG" + f"_{self.cur_year}/{self.max_year}"
+        else:
+            return self.name + f"_{self.cur_year}/{self.max_year}"
 
 
 
@@ -230,7 +240,7 @@ class state:
 
         return True, total_cost
 
-    def transist(self):
+    def transit(self):
         entropy = entropy_update()
         strategy_index = 0
         if self.cur_timestamp == MAX_TIMESTAMP:  # END INVESTMENT PERIOD
@@ -250,6 +260,8 @@ class state:
             # DEBUG: print("normal", strategy_index_list)
 
         move = self.generate_moves_by_index(0)
+        total_cost = 0
+        valid = False
         for i in strategy_index_list:
             strategy_index = i
             move = self.generate_moves_by_index(strategy_index)
@@ -257,7 +269,7 @@ class state:
             if valid:
                 break
 
-        if valid == False:  # No any valid moves (IN CASE SOME INVESTMENT HAS NEGATIVE PROFIT)
+        if not valid:  # No any valid moves (IN CASE SOME INVESTMENT HAS NEGATIVE PROFIT)
             TRANSITION.append((self.__hash__(), -1, -1000))  # UPDATE ALL MOVES SINCE NONE OF THEM ARE FEASIBLE
             return False, -1000  # False transition, rewards value
 
@@ -302,6 +314,9 @@ class state:
         TRANSITION.append((self.__hash__(), strategy_index, new_state_hash))
         return True, new_state
 
+    def __str__(self):
+        return f"\tAt time {self.cur_timestamp}. \n\t\tOngoing: {[str(proj) for proj in self.ongoing_list]}."
+
     def __hash__(self):
         hash_ongoing_list = [i.__hash__() for i in self.ongoing_list]
         hash_ongoing_list.sort()
@@ -320,6 +335,8 @@ def Q_val_update():
     if len(TRANSITION) < 1:
         return None
 
+    temp_path = copy.deepcopy(TRANSITION)
+
     # Update profit first
     cur_state_hash, action, profit = TRANSITION.pop()
 
@@ -330,14 +347,12 @@ def Q_val_update():
         HASH_STATE[cur_state_hash].possible_moves[action] += lr_update() * (profit - INITIAL_CAPITAL - HASH_STATE[cur_state_hash].possible_moves[action])
 
     for cur_state_hash, action, next_state_hash in reversed(TRANSITION):
-        HASH_STATE[cur_state_hash].possible_moves[action] += lr_update() * (STEP_REWARDS +
-                                                                   decay_rate * np.max(HASH_STATE[next_state_hash].possible_moves)
-                                                                   - HASH_STATE[cur_state_hash].possible_moves[action])
+        HASH_STATE[cur_state_hash].possible_moves[action] += lr_update() * (STEP_REWARDS + decay_rate * np.max(HASH_STATE[next_state_hash].possible_moves) - HASH_STATE[cur_state_hash].possible_moves[action])
 
     if profit > MAX_PROFIT[0]:
         MAX_PROFIT[0] = profit
         global MAX_PROFIT_PATH
-        MAX_PROFIT_PATH = copy.deepcopy(TRANSITION)
+        MAX_PROFIT_PATH = temp_path
 
     TRANSITION = []
     return profit
@@ -345,7 +360,7 @@ def Q_val_update():
 def iteration():
     cur_state = init_state
     while True:
-        cont, next_state = cur_state.transist()
+        cont, next_state = cur_state.transit()
         if cont:
             cur_state = next_state
         else:
@@ -376,9 +391,14 @@ def batch(num, batch_size=1000):
 init_state = state(0, INITIAL_CAPITAL, bt0)
 HASH_STATE[init_state.__hash__()] = init_state
 
-hist = batch(50)
+hist = batch(1000)
 
 print(f"Total expanded states {len(HASH_STATE)}")
+print(f"Max profit {MAX_PROFIT[0]}")
+print("\nMax profit path:\n")
+for s1, a1, s2 in MAX_PROFIT_PATH:
+    print(HASH_STATE[s1])
+
 
 plt.plot(hist)
 plt.show()
