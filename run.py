@@ -15,7 +15,7 @@ np.random.seed(2111091034)
 INITIAL_CAPITAL = 5.0
 decay_rate = 0.3
 MAX_TIMESTAMP = 5
-STEP_REWARDS = 0
+STEP_REWARDS = -0.0001
 
 HASH_STATE = {}  # STATE_HASH : STATE_OBJECT
 TRANSITION = []  # (STATE_HASH, MOVE_INDEX) : NEXT_STATE_HASH
@@ -253,6 +253,7 @@ class state:
                 break
             else:
                 self.exploitation_times[strategy_index] = float('inf')
+                self.possible_moves[strategy_index] = float('-inf')
 
         if not valid:  # No any valid moves (IN CASE SOME INVESTMENT HAS NEGATIVE PROFIT)
             TRANSITION.append(
@@ -340,8 +341,8 @@ def Q_val_update(lr_func):
     else:
         amplifier = 1
         if gnd_brk_flag:
-            amplifier = 5
-            HASH_STATE[cur_state_hash].possible_moves[action] += lr_func() * (amplifier * (profit - INITIAL_CAPITAL) - HASH_STATE[cur_state_hash].possible_moves[action])
+            amplifier = 10
+        HASH_STATE[cur_state_hash].possible_moves[action] += lr_func() * (amplifier * (profit - INITIAL_CAPITAL) - HASH_STATE[cur_state_hash].possible_moves[action])
 
 
     for cur_state_hash, action, next_state_hash in reversed(TRANSITION):
