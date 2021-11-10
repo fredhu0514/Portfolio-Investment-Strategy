@@ -327,24 +327,28 @@ def Q_val_update(lr_func):
 
     # Update profit first
     cur_state_hash, action, profit = TRANSITION.pop()
+    gnd_brk_flag = False
+    if profit >= MAX_PROFIT[0]:
+        gnd_brk_flag = True
+        MAX_PROFIT[0] = profit
+        global MAX_PROFIT_PATH
+        MAX_PROFIT_PATH = temp_path
 
     if action == -1:
         for i in range(len(HASH_STATE[cur_state_hash].possible_moves)):
-            HASH_STATE[cur_state_hash].possible_moves[i] += lr_func() * (
-                        profit - INITIAL_CAPITAL - HASH_STATE[cur_state_hash].possible_moves[action])
+            HASH_STATE[cur_state_hash].possible_moves[i] += lr_func() * ((profit - INITIAL_CAPITAL) - HASH_STATE[cur_state_hash].possible_moves[action])
     else:
-        HASH_STATE[cur_state_hash].possible_moves[action] += lr_func() * (
-                    profit - INITIAL_CAPITAL - HASH_STATE[cur_state_hash].possible_moves[action])
+        amplifier = 1
+        if gnd_brk_flag:
+            amplifier = 5
+            HASH_STATE[cur_state_hash].possible_moves[action] += lr_func() * (amplifier * (profit - INITIAL_CAPITAL) - HASH_STATE[cur_state_hash].possible_moves[action])
+
 
     for cur_state_hash, action, next_state_hash in reversed(TRANSITION):
         HASH_STATE[cur_state_hash].possible_moves[action] += lr_func() * (
                     STEP_REWARDS + decay_rate * np.max(HASH_STATE[next_state_hash].possible_moves) -
                     HASH_STATE[cur_state_hash].possible_moves[action])
 
-    if profit > MAX_PROFIT[0]:
-        MAX_PROFIT[0] = profit
-        global MAX_PROFIT_PATH
-        MAX_PROFIT_PATH = temp_path
 
     TRANSITION = []
     return profit
@@ -398,11 +402,15 @@ def train(exploration_rate, lr_func, batches=30, iter_per_batch=1000):
 init_state = state(0, INITIAL_CAPITAL, bt0)
 HASH_STATE[init_state.__hash__()] = init_state
 
+count_max = [0]
+
 if __name__ == "__main__":
     hist1 = train(exploration_rate=lambda: 1, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
     hist2 = train(exploration_rate=lambda: 0.8, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
     hist3 = train(exploration_rate=lambda: 0.5, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
     hist4 = train(exploration_rate=lambda: min(0.5, max(1 - (CURRENT_ITER[0] / CURRENT_ITER[1]) ** 2, 0.1)), lr_func=lambda: 0.01, batches=200, iter_per_batch=1000)
+    hist5 = train(exploration_rate=lambda: 0.05, lr_func=lambda: 0.01, batches=200, iter_per_batch=1000)
+    hist6 = train(exploration_rate=lambda: 0.0000001, lr_func=lambda: 0.01, batches=10, iter_per_batch=1000)
 
-    plt.plot(hist1 + hist2 + hist3 + hist4)
+    plt.plot(hist1 + hist2 + hist3 + hist4 + hist5 + hist6)
     plt.show()
