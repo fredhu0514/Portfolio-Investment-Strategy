@@ -185,8 +185,8 @@ class state:
         self.current_cash = C
         self.back_list = BACK_LIST[self.cur_timestamp]
         self.ongoing_list = ongoing_list
-        self.possible_moves = np.zeros((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
-        self.exploitation_times = np.zeros((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
+        self.possible_moves = np.zeros(1) if self.cur_timestamp == MAX_TIMESTAMP else np.zeros((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
+        self.exploitation_times = np.zeros(len(self.possible_moves))
 
     def generate_moves_by_index(self, index):
         # 0: maintain, 1: pickup
@@ -218,47 +218,51 @@ class state:
 
         return True, total_cost
 
-    def transit(self, entropy_func):
-        entropy = entropy_func()
-        strategy_index = 0
+    def transit(self, entropy_func=lambda:0, brutal_force=False, strategy_index=0):
         if self.cur_timestamp == MAX_TIMESTAMP:  # END INVESTMENT PERIOD
             total_profit = sum([i.investment_termination() for i in self.ongoing_list])
             # STORE THE PATH TO THE MAP
             TRANSITION.append((self.__hash__(), strategy_index, total_profit))
             return False, total_profit
 
-        if random_generate_function(entropy):
-            # # PURE RANDOMNESS EXPLORATION
-            # temp_index_list = np.arange((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
-            # np.random.shuffle(temp_index_list)
-            # strategy_index_list = temp_index_list
-
-            # SORT self.possible_moves ACCORDING self.exploitation_times
-            strategy_index_list = np.arange((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))[np.argsort(self.exploitation_times)]
-
-            # DEBUG: print("random", strategy_index_list)
-        else:
-            strategy_index_list = np.flip(np.argsort(self.possible_moves))
-            # DEBUG: print("normal", strategy_index_list)
-
-        move = self.generate_moves_by_index(0)
-        total_cost = 0
-        valid = False
-        for i in strategy_index_list:
-            strategy_index = int(i)
+        if brutal_force:
             move = self.generate_moves_by_index(strategy_index)
             valid, total_cost = self.is_valid_move(move)
-            if valid:
-                self.exploitation_times[strategy_index] += 1
-                break
-            else:
-                self.exploitation_times[strategy_index] = float('inf')
-                self.possible_moves[strategy_index] = float('-inf')
+            if not valid:
+                return -1, float('-inf')
+        else:
+            if random_generate_function(entropy_func()):
+                # # PURE RANDOMNESS EXPLORATION
+                # temp_index_list = np.arange((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))
+                # np.random.shuffle(temp_index_list)
+                # strategy_index_list = temp_index_list
 
-        if not valid:  # No any valid moves (IN CASE SOME INVESTMENT HAS NEGATIVE PROFIT)
-            TRANSITION.append(
-                (self.__hash__(), -1, -1000 * INITIAL_CAPITAL))  # UPDATE ALL MOVES SINCE NONE OF THEM ARE FEASIBLE
-            return False, -1000 * INITIAL_CAPITAL  # False transition, rewards value
+                # SORT self.possible_moves ACCORDING self.exploitation_times
+                strategy_index_list = np.arange((2 ** len(self.back_list)) * (3 ** len(self.ongoing_list)))[np.argsort(self.exploitation_times)]
+
+                # DEBUG: print("random", strategy_index_list)
+            else:
+                strategy_index_list = np.flip(np.argsort(self.possible_moves))
+                # DEBUG: print("normal", strategy_index_list)
+
+            move = self.generate_moves_by_index(0)
+            total_cost = 0
+            valid = False
+            for i in strategy_index_list:
+                strategy_index = int(i)
+                move = self.generate_moves_by_index(strategy_index)
+                valid, total_cost = self.is_valid_move(move)
+                if valid:
+                    self.exploitation_times[strategy_index] += 1
+                    break
+                else:
+                    self.exploitation_times[strategy_index] = float('inf')
+                    self.possible_moves[strategy_index] = float('-inf')
+
+            if not valid:  # No any valid moves (IN CASE SOME INVESTMENT HAS NEGATIVE PROFIT)
+                TRANSITION.append(
+                    (self.__hash__(), -1, -1000 * INITIAL_CAPITAL))  # UPDATE ALL MOVES SINCE NONE OF THEM ARE FEASIBLE
+                return False, -1000 * INITIAL_CAPITAL  # False transition, rewards value
 
         total_profit = 0
         temp_ongoing_list = []
@@ -392,6 +396,46 @@ def train(exploration_rate, lr_func, batches=30, iter_per_batch=1000):
 
     return hist
 
+"""
+##################
+## BRUTAL FORCE ##
+##################
+"""
+def brutal_force(root_state):
+    def dfs_helper(cur_state, strategy_index):
+        print(f"Total expanded states {len(HASH_STATE)}", end="\r")
+        val, profit_state = cur_state.transit(brutal_force=True, strategy_index=strategy_index)
+        val = int(val)
+        global TRANSITION
+        if val == 0:
+            if len(TRANSITION) < 1:
+                raise RuntimeError('TRANSITION CANNOT BE EMPTY in brutal force!')
+            temp_path = copy.deepcopy(TRANSITION)
+            if profit_state > MAX_PROFIT[0]:
+                MAX_PROFIT[0] = profit_state
+                global MAX_PROFIT_PATH
+                MAX_PROFIT_PATH = temp_path
+                print(f"Total expanded states {len(HASH_STATE)}")
+                print(f"Max profit {MAX_PROFIT[0]}")
+                print("\nMax profit path:\n")
+                for s1, _, s2 in MAX_PROFIT_PATH:
+                    print(HASH_STATE[s1])
+                print("\n==========================================================================================\n")
+            return profit_state
+        elif val == -1:
+            TRANSITION.append(None)
+            return float('-inf')
+        else:
+            temp_max = float('-inf')
+            for i in range(len(profit_state.possible_moves)):
+                temp_max = max(temp_max, dfs_helper(profit_state, i))
+                TRANSITION.pop()
+            return temp_max
+    temp_r = float('-inf')
+    for i in range(len(root_state.possible_moves)):
+        temp_r = max(temp_r, dfs_helper(root_state, i))
+    return temp_r
+
 
 
 """
@@ -403,15 +447,16 @@ def train(exploration_rate, lr_func, batches=30, iter_per_batch=1000):
 init_state = state(0, INITIAL_CAPITAL, bt0)
 HASH_STATE[init_state.__hash__()] = init_state
 
-count_max = [0]
+
 
 if __name__ == "__main__":
-    hist1 = train(exploration_rate=lambda: 1, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
-    hist2 = train(exploration_rate=lambda: 0.8, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
-    hist3 = train(exploration_rate=lambda: 0.5, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
-    hist4 = train(exploration_rate=lambda: min(0.5, max(1 - (CURRENT_ITER[0] / CURRENT_ITER[1]) ** 2, 0.1)), lr_func=lambda: 0.01, batches=200, iter_per_batch=1000)
-    hist5 = train(exploration_rate=lambda: 0.05, lr_func=lambda: 0.01, batches=200, iter_per_batch=1000)
-    hist6 = train(exploration_rate=lambda: 0.0000001, lr_func=lambda: 0.01, batches=10, iter_per_batch=1000)
-
-    plt.plot(hist1 + hist2 + hist3 + hist4 + hist5 + hist6)
-    plt.show()
+    # hist1 = train(exploration_rate=lambda: 1, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
+    # hist2 = train(exploration_rate=lambda: 0.8, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
+    # hist3 = train(exploration_rate=lambda: 0.5, lr_func=lambda: 0.01, batches=100, iter_per_batch=1000)
+    # hist4 = train(exploration_rate=lambda: min(0.5, max(1 - (CURRENT_ITER[0] / CURRENT_ITER[1]) ** 2, 0.1)), lr_func=lambda: 0.01, batches=200, iter_per_batch=1000)
+    # hist5 = train(exploration_rate=lambda: 0.05, lr_func=lambda: 0.01, batches=200, iter_per_batch=1000)
+    # hist6 = train(exploration_rate=lambda: 0.0000001, lr_func=lambda: 0.01, batches=10, iter_per_batch=1000)
+    #
+    # plt.plot(hist1 + hist2 + hist3 + hist4 + hist5 + hist6)
+    # plt.show()
+    brutal_force(init_state)
